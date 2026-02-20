@@ -10,7 +10,6 @@ const getRewardLevel = (points) => {
   if (points >= 1000) return "🥈 Silver";
   return "🥉 Bronze";
 };
-
 export default function Rewards() {
   const [rewards, setRewards] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -36,9 +35,6 @@ export default function Rewards() {
     }
   };
 
-  // =============================
-  // CALCULATIONS
-  // =============================
   const bankReward = rewards.find(
     (r) => r.program_name === "Bank Rewards"
   );

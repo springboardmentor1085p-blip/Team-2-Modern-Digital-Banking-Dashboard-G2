@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import API from "../utils/api";
 import { formatINR } from "../utils/format";
+import { exportCSV, exportPDF } from "../services/exportService";
 
 /* ------------------ CURRENCIES ------------------ */
 const CURRENCIES = {
@@ -18,7 +19,6 @@ export default function Transactions() {
   const [categories, setCategories] = useState([]);
   const [currency, setCurrency] = useState("INR");
 
-  /* ------------------ ADD TRANSACTION STATES ------------------ */
   const [showForm, setShowForm] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -28,12 +28,10 @@ export default function Transactions() {
 
   /* ------------------ FETCH ACCOUNTS ------------------ */
   useEffect(() => {
-    API.get("/accounts")
+    API.get("/accounts/")
       .then((res) => {
         setAccounts(res.data);
-        if (res.data.length > 0) {
-          setSelectedAccount(res.data[0].id);
-        }
+        if (res.data.length) setSelectedAccount(res.data[0].id);
       })
       .catch(() => alert("Failed to load accounts"));
   }, []);
@@ -49,77 +47,71 @@ export default function Transactions() {
 
   /* ------------------ FETCH CATEGORIES ------------------ */
   useEffect(() => {
-    API.get("/categories/")
+    API.get("/transactions/categories")
       .then((res) => setCategories(res.data))
       .catch(() => alert("Failed to load categories"));
   }, []);
 
   /* ------------------ CSV IMPORT ------------------ */
   const handleCSV = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
+  const formData = new FormData();
+  formData.append("file", file);
 
-    API.post("/transactions/upload-csv", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+  // 🔥 IMPORTANT: send selected account_id
+  formData.append("account_id", selectedAccount);
+
+  API.post("/transactions/upload-csv", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  })
+    .then(() => API.get(`/transactions/${selectedAccount}`))
+    .then((res) => {
+      setTransactions(res.data);
+      alert("CSV uploaded successfully ✅");
     })
-      .then(() => {
-        alert("CSV uploaded successfully ✅");
-        API.get(`/transactions/${selectedAccount}`).then((res) =>
-          setTransactions(res.data)
-        );
-      })
-      .catch(() => alert("CSV upload failed ❌"));
-  };
+    .catch((err) => {
+      console.error(err);
+      alert("CSV upload failed ❌ (check CSV format)");
+    });
+};
 
   /* ------------------ ADD TRANSACTION ------------------ */
-  const handleAddTransaction = () => {
-    if (!desc || !amount) {
-      alert("Please fill all fields");
+  const handleAddTransaction = async () => {
+    if (!amount || Number(amount) <= 0) {
+      alert("Enter a valid amount");
       return;
     }
 
-    API.post("/transactions/", {
-      account_id: Number(selectedAccount),
-      description: desc,
-      merchant: merchant,
-      amount: Number(amount),
-      txn_type: type,
-      currency: currency,
-      txn_date: txnDate,
-    })
-      .then(() => {
-        alert("Transaction added successfully ✅");
+    try {
+      await API.post("/transactions/", {
+        account_id: Number(selectedAccount),
+        description: desc || null,
+        merchant: merchant || null,
+        amount: Number(amount),
+        txn_type: type.toLowerCase(),
+        currency,
+        txn_date: txnDate || null,
+      });
 
-        setDesc("");
-        setAmount("");
-        setType("credit");
-        setShowForm(false);
-        setTxnDate("");
-        setMerchant("");
+      alert("Transaction added successfully ✅");
 
-        API.get(`/transactions/${selectedAccount}`).then((res) =>
-          setTransactions(res.data)
-        );
-      })
-      .catch(() => alert("Failed to add transaction ❌"));
-  };
+      setDesc("");
+      setAmount("");
+      setType("credit");
+      setMerchant("");
+      setTxnDate("");
+      setShowForm(false);
 
-  /* ------------------ UPDATE CATEGORY ------------------ */
-  const handleCategoryChange = (txnId, newCategory) => {
-    API.put(`/transactions/${txnId}/category`, null, {
-      params: { category: newCategory },
-    })
-      .then(() => {
-        setTransactions((prev) =>
-          prev.map((tx) =>
-            tx.id === txnId ? { ...tx, category: newCategory } : tx
-          )
-        );
-      })
-      .catch(() => alert("Failed to update category ❌"));
+      const res = await API.get(`/transactions/${selectedAccount}`);
+      setTransactions(res.data);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add transaction ❌");
+    }
   };
 
   /* ------------------ UI ------------------ */
@@ -135,11 +127,10 @@ export default function Transactions() {
         </div>
 
         <div className="flex gap-3 items-center">
-          {/* ACCOUNT SELECT */}
           <select
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
-            className="border rounded-lg px-3 py-2"
+            className="border rounded px-3 py-2"
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -148,163 +139,117 @@ export default function Transactions() {
             ))}
           </select>
 
-          {/* CURRENCY */}
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
-            className="border rounded-lg px-3 py-2"
+            className="border rounded px-3 py-2"
           >
             {Object.keys(CURRENCIES).map((c) => (
               <option key={c}>{c}</option>
             ))}
           </select>
 
-          {/* CSV UPLOAD */}
-          <label className="bg-blue-900 text-white px-4 py-2 rounded-lg cursor-pointer">
-            ⬆ Import CSV
+          <button onClick={exportCSV} className="bg-blue-600 text-white px-4 py-2 rounded">
+            Export CSV
+          </button>
+
+          <button onClick={exportPDF} className="bg-red-600 text-white px-4 py-2 rounded">
+            Export PDF
+          </button>
+
+          <label className="bg-indigo-700 text-white px-4 py-2 rounded cursor-pointer">
+            Import CSV
             <input type="file" accept=".csv" hidden onChange={handleCSV} />
           </label>
 
-          {/* ADD BUTTON */}
           <button
             onClick={() => setShowForm(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg"
+            className="bg-green-600 text-white px-4 py-2 rounded"
           >
-            + Add Transaction
+            + Add
           </button>
         </div>
       </div>
 
-      {/* ADD TRANSACTION FORM */}
+      {/* ADD FORM */}
       {showForm && (
-        <div className="bg-white p-6 rounded-xl shadow w-96">
-          <h3 className="text-lg font-bold mb-4">Add Transaction</h3>
-
-          <input
-            type="text"
-            placeholder="Description"
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            className="border rounded px-3 py-2 w-full mb-3"
-          />
-
-          <input
-            type="text"
-            placeholder="Merchant (eg: Zomato, Amazon)"
-            value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
-            className="border rounded px-3 py-2 w-full mb-3"
-          />
-
-          <input
-            type="number"
-            placeholder="Amount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="border rounded px-3 py-2 w-full mb-3"
-          />
-
-          <input
-            type="date"
-            value={txnDate}
-            onChange={(e) => setTxnDate(e.target.value)}
-            className="border rounded px-3 py-2 w-full mb-3"
-          />
-
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="border rounded px-3 py-2 w-full mb-4"
-          >
-            <option value="credit">Credit (Income)</option>
-            <option value="debit">Debit (Expense)</option>
+        <div className="bg-white p-4 rounded-xl shadow space-y-3">
+          <input className="border p-2 w-full" placeholder="Description" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <input className="border p-2 w-full" placeholder="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+          <input className="border p-2 w-full" type="number" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <select className="border p-2 w-full" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="credit">Credit</option>
+            <option value="debit">Debit</option>
           </select>
+          <input className="border p-2 w-full" type="date" value={txnDate} onChange={(e) => setTxnDate(e.target.value)} />
 
           <div className="flex gap-3">
-            <button
-              onClick={handleAddTransaction}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
+            <button onClick={handleAddTransaction} className="bg-green-600 text-white px-4 py-2 rounded">
               Save
             </button>
-            <button
-              onClick={() => setShowForm(false)}
-              className="bg-gray-400 text-white px-4 py-2 rounded"
-            >
+            <button onClick={() => setShowForm(false)} className="bg-gray-400 px-4 py-2 rounded">
               Cancel
             </button>
           </div>
         </div>
       )}
-
-      {/* TRANSACTION TABLE */}
+  
+      {/* TABLE */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-bold">Transaction History</h2>
-          <p className="text-gray-500 text-sm">
-            Showing {transactions.length} transactions
-          </p>
-        </div>
-
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-gray-600 text-sm">
+        <table className="w-full table-fixed border-collapse">
+          <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="px-6 py-3">ID</th>
-              <th className="px-6 py-3">DESCRIPTION</th>
-              <th className="px-6 py-3">MERCHANT</th>
-              <th className="px-6 py-3">CATEGORY</th>
-              <th className="px-6 py-3">CURRENCY</th>
-              <th className="px-6 py-3 text-right">AMOUNT</th>
-              <th className="px-6 py-3 text-center">TYPE</th>
-              <th className="p-3">DATE</th>
+              <th className="w-16 px-4 py-3 text-left">ID</th>
+              <th className="w-[240px] px-4 py-3 text-left">Description</th>
+              <th className="w-[200px] px-4 py-3 text-left">Merchant</th>
+              <th className="w-[150px] px-4 py-3 text-center">Category</th>
+              <th className="w-[140px] px-4 py-3 text-right">Amount</th>
+              <th className="w-[110px] px-4 py-3 text-center">Type</th>
+              <th className="w-[140px] px-4 py-3 text-center">Date</th>
             </tr>
           </thead>
 
           <tbody>
             {transactions.map((tx) => (
-              <tr key={tx.id} className="border-t hover:bg-gray-50">
-                <td className="px-6 py-4">{tx.id}</td>
-                <td className="px-6 py-4 font-medium">{tx.description || "-"}</td>
-                <td className="px-6 py-4">{tx.merchant || "-"}</td>
+              <tr key={tx.id} className="border-b hover:bg-gray-50">
+                <td className="px-4 py-3 whitespace-nowrap">{tx.id}</td>
+                <td className="px-4 py-3 truncate">{tx.description}</td>
+                <td className="px-4 py-3 truncate">{tx.merchant || "-"}</td>
+                <td className="px-4 py-3 text-center">
+  <select
+    value={tx.category}
+    onChange={(e) => {
+      const newCategory = e.target.value;
 
-                <td className="px-6 py-4">
-                  <select
-                    value={tx.category || "Others"}
-                    onChange={(e) =>
-                      handleCategoryChange(tx.id, e.target.value)
-                    }
-                    className="border rounded px-3 py-2"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.name}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
+      // update UI instantly
+      setTransactions((prev) =>
+        prev.map((t) =>
+          t.id === tx.id ? { ...t, category: newCategory } : t
+        )
+      );
+
+      // update backend
+      API.put(`/transactions/${tx.id}/category`, null, {
+        params: { category: newCategory },
+      }).catch(() => alert("Failed to update category ❌"));
+    }}
+    className="w-32 border rounded px-2 py-1"
+  >
+    {categories.map((cat) => (
+      <option key={cat.id} value={cat.name}>
+        {cat.name}
+      </option>
+    ))}
+  </select>
+</td>
+
+
+                <td className={`px-4 py-3 text-right font-medium ${tx.txn_type === "credit" ? "text-green-600" : "text-red-600"}`}>
+                  {tx.txn_type === "credit" ? "+" : "-"}₹{formatINR(tx.amount)}
                 </td>
-
-                <td className="px-6 py-4">{tx.currency || "INR"}</td>
-
-                {/* ✅ FIXED AMOUNT WITH COMMAS */}
-                <td
-                  className={`px-6 py-4 text-right font-semibold ${
-                    tx.txn_type === "credit"
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}
-                >
-                  {tx.txn_type === "credit" ? "+" : "-"}
-                  {formatINR(Math.abs(Number(tx.amount)))}
-                </td>
-
-                <td className="px-6 py-4 text-center">
-                  {tx.txn_type === "credit" ? "⬇ Credit" : "⬆ Debit"}
-                </td>
-
-                <td className="p-3">
-                  {tx.txn_date
-                    ? new Date(tx.txn_date).toISOString().split("T")[0]
-                    : "-"}
+                <td className="px-4 py-3 text-center capitalize">{tx.txn_type}</td>
+                <td className="px-4 py-3 text-center whitespace-nowrap">
+                  {tx.txn_date?.slice(0, 10)}
                 </td>
               </tr>
             ))}

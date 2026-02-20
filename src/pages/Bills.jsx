@@ -6,74 +6,54 @@ import {
   fetchBills,
   addBillApi,
   updateBillApi,
+  deleteBillApi,
 } from "../services/billsService";
 
-import { formatINR } from "../utils/format"; // ✅ ADDED
+import { formatINR } from "../utils/format";
 
 export default function Bills() {
   const [bills, setBills] = useState([]);
   const [filter, setFilter] = useState("all");
   const [openForm, setOpenForm] = useState(false);
 
-  /* =========================
-     LOAD BILLS
-  ========================= */
+  /* ================= LOAD BILLS ================= */
   useEffect(() => {
-    fetchBills()
-      .then(setBills)
-      .catch(console.error);
+    fetchBills().then(setBills).catch(console.error);
   }, []);
 
-  /* =========================
-     ADD BILL
-  ========================= */
+  /* ================= ADD BILL ================= */
   const addBill = async (bill) => {
     const saved = await addBillApi(bill);
     setBills((prev) => [...prev, saved]);
     setOpenForm(false);
+    alert("✅ Bill added successfully");
   };
 
-  /* =========================
-     TOGGLE PAID
-  ========================= */
-  const togglePaid = async (id) => {
-    const bill = bills.find((b) => b.id === id);
-    const updated = await updateBillApi(id, {
-      status: bill.status === "paid" ? "upcoming" : "paid",
-    });
-
+  /* ================= UPDATE BILL ================= */
+  const updateBill = async (id, data) => {
+    const updated = await updateBillApi(id, data);
     setBills((prev) =>
       prev.map((b) => (b.id === id ? updated : b))
     );
   };
 
-  /* =========================
-     TOGGLE AUTOPAY
-  ========================= */
-  const toggleAutoPay = async (id) => {
-    const bill = bills.find((b) => b.id === id);
-    const updated = await updateBillApi(id, {
-      auto_pay: !bill.auto_pay,
-    });
-
-    setBills((prev) =>
-      prev.map((b) => (b.id === id ? updated : b))
-    );
+  /* ================= DELETE BILL ================= */
+  const deleteBill = async (id) => {
+    if (!window.confirm("Delete this bill?")) return;
+    await deleteBillApi(id);
+    setBills((prev) => prev.filter((b) => b.id !== id));
+    alert("🗑️ Bill deleted successfully");
   };
 
-  /* =========================
-     FILTERS & TOTALS
-  ========================= */
-  const enrichedBills = bills || [];
-
+  /* ================= FILTERS ================= */
   const filteredBills =
     filter === "all"
-      ? enrichedBills
-      : enrichedBills.filter((b) => b.status === filter);
+      ? bills
+      : bills.filter((b) => b.status === filter);
 
-  const totalDue = enrichedBills
+  const totalDue = bills
     .filter((b) => b.status !== "paid")
-    .reduce((sum, b) => sum + Number(b.amount_due || 0), 0);
+    .reduce((sum, b) => sum + Number(b.amount_due), 0);
 
   return (
     <div className="space-y-6">
@@ -85,23 +65,10 @@ export default function Bills() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Total Due"
-          value={formatINR(totalDue)} // ✅ formatted
-          dark
-        />
-        <SummaryCard
-          title="Upcoming"
-          value={enrichedBills.filter((b) => b.status === "upcoming").length}
-        />
-        <SummaryCard
-          title="Overdue"
-          value={enrichedBills.filter((b) => b.status === "overdue").length}
-        />
-        <SummaryCard
-          title="Paid"
-          value={enrichedBills.filter((b) => b.status === "paid").length}
-        />
+        <SummaryCard title="Total Due" value={formatINR(totalDue)} dark />
+        <SummaryCard title="Upcoming" value={bills.filter(b => b.status === "upcoming").length} />
+        <SummaryCard title="Overdue" value={bills.filter(b => b.status === "overdue").length} />
+        <SummaryCard title="Paid" value={bills.filter(b => b.status === "paid").length} />
       </div>
 
       <div className="flex gap-3 bg-gray-100 p-2 rounded-lg w-fit">
@@ -110,12 +77,10 @@ export default function Bills() {
             key={f}
             onClick={() => setFilter(f)}
             className={`px-4 py-2 rounded-md text-sm ${
-              filter === f
-                ? "bg-white shadow font-medium"
-                : "text-gray-500"
+              filter === f ? "bg-white shadow font-medium" : "text-gray-500"
             }`}
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f.toUpperCase()}
           </button>
         ))}
       </div>
@@ -131,8 +96,13 @@ export default function Bills() {
 
       <BillList
         bills={filteredBills}
-        onTogglePaid={togglePaid}
-        onToggleAutoPay={toggleAutoPay}
+        onTogglePaid={(id, status) =>
+          updateBill(id, { status: status === "paid" ? "upcoming" : "paid" })
+        }
+        onToggleAutoPay={(id, auto) =>
+          updateBill(id, { auto_pay: !auto })
+        }
+        onDelete={deleteBill}
       />
 
       {openForm && (

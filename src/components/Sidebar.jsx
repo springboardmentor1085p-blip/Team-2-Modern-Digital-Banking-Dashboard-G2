@@ -7,7 +7,7 @@ import {
   PieChart,
   Settings,
   HelpCircle,
-  Receipt,   
+  Receipt,  
   Gift 
 } from "lucide-react";
 

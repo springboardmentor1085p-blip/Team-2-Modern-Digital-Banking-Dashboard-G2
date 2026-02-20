@@ -1,221 +1,210 @@
-import { useEffect, useState, useRef } from "react";
-import API from "../utils/api";
+import { useEffect, useState } from "react";
 import {
   PieChart,
   Pie,
   Cell,
-  Tooltip,
-  Legend,
   ResponsiveContainer,
+  Tooltip,
 } from "recharts";
+
+import API from "../utils/api";
 import { formatINR } from "../utils/format";
 
-/* ----------- CURRENCIES ----------- */
-const CURRENCIES = {
-  INR: { symbol: "₹", rate: 1 },
-  USD: { symbol: "$", rate: 0.012 },
-  EUR: { symbol: "€", rate: 0.011 },
-  GBP: { symbol: "£", rate: 0.0095 },
-  JPY: { symbol: "¥", rate: 1.8 },
-};
-
-/* ----------- PIE COLORS ----------- */
 const COLORS = [
   "#22c55e",
   "#3b82f6",
   "#f97316",
   "#a855f7",
   "#ec4899",
-  "#facc15",
-  "#ef4444",
   "#14b8a6",
+  "#eab308",
+  "#ef4444",
 ];
 
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [categorySummary, setCategorySummary] = useState([]);
-  const [rewardPoints, setRewardPoints] = useState(0);
+  const [spending, setSpending] = useState([]);
+  const [recentTx, setRecentTx] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [currency, setCurrency] = useState("INR");
-  const [notifications, setNotifications] = useState([]);
-
-  // 🔒 prevents repeated notifications
-  const notifiedOnce = useRef(false);
-
-  const convert = (amount) =>
-    amount != null ? Number(amount) * CURRENCIES[currency].rate : 0;
-
-  /* ---------------- LOAD DASHBOARD DATA ---------------- */
   useEffect(() => {
-    async function loadDashboard() {
-      try {
-        // Transactions
-        const txRes = await API.get("/transactions");
-        const allTx = txRes.data;
-
-        const recentTx = allTx
-          .slice()
-          .sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date))
-          .slice(0, 5);
-
-        setTransactions(recentTx);
-
-        // Accounts
-        const accRes = await API.get("/accounts");
-        const accounts = accRes.data;
-
-        let balance = 0;
-        accounts.forEach((a) => (balance += a.balance));
-
-        let income = 0;
-        let expenses = 0;
-
-        allTx.forEach((tx) => {
-          if (tx.txn_type === "credit") income += Number(tx.amount);
-          if (tx.txn_type === "debit") expenses += Number(tx.amount);
-        });
-
-        setSummary({
-          balance,
-          accounts: accounts.length,
-          income,
-          expenses,
-        });
-
-        // Category summary
-        const catRes = await API.get("/transactions/category-summary");
-        setCategorySummary(catRes.data);
-
-        // Rewards
-        const rewardRes = await API.get("/rewards");
-        const totalRewards = rewardRes.data.reduce(
-          (sum, r) => sum + Number(r.points_balance || 0),
-          0
-        );
-        setRewardPoints(totalRewards);
-      } catch (err) {
-        console.error("Dashboard error:", err);
-      }
-    }
-
     loadDashboard();
   }, []);
 
-  /* ---------------- NOTIFICATIONS (SHOW ONCE) ---------------- */
-  useEffect(() => {
-    if (!transactions.length) return;
-    if (notifiedOnce.current) return;
+  const loadDashboard = async () => {
+    try {
+      const summaryRes = await API.get("/dashboard/summary");
+      const txRes = await API.get("/transactions");
 
-    transactions.forEach((tx) => {
-      if (tx.txn_type === "credit") {
-        notify(`Credited ${formatINR(convert(tx.amount))}`);
-      } else {
-        notify(`Debited ${formatINR(convert(tx.amount))}`);
-      }
-    });
+      // sort + take ONLY 5 latest transactions
+      const lastFive = txRes.data
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.txn_date) - new Date(a.txn_date)
+        )
+        .slice(0, 5);
 
-    notifiedOnce.current = true;
-  }, [transactions]);
-
-  const notify = (message) => {
-    const id = Date.now() + Math.random();
-    setNotifications((prev) => [...prev, { id, message }]);
-
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 4000);
+      setSummary(summaryRes.data);
+      setSpending(summaryRes.data.spending_distribution || []);
+      setRecentTx(lastFive);
+    } catch (err) {
+      console.error("Dashboard error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const pieData = categorySummary.map((item) => ({
-    name: item.category || "Others",
-    value: item.total,
-  }));
+  if (loading) {
+    return <p className="text-gray-500">Loading dashboard...</p>;
+  }
 
   return (
-    <div className="space-y-6 relative">
-      {/* 🔔 NOTIFICATIONS */}
-      <div className="fixed top-5 right-5 space-y-3 z-50">
-        {notifications.map((n) => (
-          <div
-            key={n.id}
-            className="bg-black text-white px-4 py-3 rounded-lg shadow"
-          >
-            🔔 {n.message}
-          </div>
-        ))}
-      </div>
-
+    <div className="space-y-8">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-gray-500">
-            Welcome back! Here's your financial overview.
-          </p>
-        </div>
-
-        <select
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
-          className="border rounded-lg px-3 py-2"
-        >
-          {Object.keys(CURRENCIES).map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
+      <div>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <p className="text-gray-500">
+          Welcome back! Here's your financial overview.
+        </p>
       </div>
 
       {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-        <StatCard title="Total Balance" value={formatINR(convert(summary?.balance))} />
-        <StatCard title="Accounts" value={summary?.accounts} />
-        <StatCard title="Income" value={formatINR(convert(summary?.income))} positive />
-        <StatCard title="Expenses" value={formatINR(convert(summary?.expenses))} negative />
-        <StatCard title="Reward Points" value={formatINR(rewardPoints)} />
-      </div>
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <StatCard
+            title="Total Balance"
+            value={`₹ ${formatINR(summary.balance)}`}
+          />
+          <StatCard
+            title="Accounts"
+            value={summary.accounts}
+          />
+          <StatCard
+            title="Income"
+            value={`₹ ${formatINR(summary.income)}`}
+            color="text-green-600"
+          />
+          <StatCard
+            title="Expenses"
+            value={`₹ ${formatINR(summary.expenses)}`}
+            color="text-red-600"
+          />
+          <StatCard
+            title="Reward Points"
+            value={summary.reward_points}
+          />
+        </div>
+      )}
 
-      {/* CHART + TRANSACTIONS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Spending Distribution</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={pieData} dataKey="value" outerRadius={100} label>
-                {pieData.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+      {/* MAIN SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+        {/* SPENDING DISTRIBUTION */}
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h2 className="text-xl font-bold mb-4">
+            Spending Distribution
+          </h2>
+
+          {spending.length === 0 ? (
+            <p className="text-gray-500">No data</p>
+          ) : (
+            <>
+              {/* PIE CHART */}
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie
+                    data={spending}
+                    dataKey="amount"
+                    nameKey="category"
+                    outerRadius={110}
+                    label
+                  >
+                    {spending.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={COLORS[i % COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => `₹ ${formatINR(v)}`} />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* CATEGORY NAMES BELOW CHART */}
+              <div className="flex flex-wrap justify-center gap-4 mt-4">
+                {spending.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{
+                        backgroundColor:
+                          COLORS[index % COLORS.length],
+                      }}
+                    />
+                    <span className="text-gray-700 font-medium">
+                      {item.category}
+                    </span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-xl shadow">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-bold">Recent Transactions</h2>
-          </div>
+        {/* RECENT TRANSACTIONS */}
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h2 className="text-xl font-bold mb-4">
+            Recent Transactions
+          </h2>
 
           <table className="w-full text-left">
+            <thead className="bg-gray-50 text-sm text-gray-600">
+              <tr>
+                <th className="p-4">Date</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th className="text-right pr-4">Amount</th>
+              </tr>
+            </thead>
+
             <tbody>
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="border-b">
-                  <td className="p-4">{tx.txn_date?.slice(0, 10)}</td>
-                  <td>{tx.description}</td>
-                  <td>{tx.category}</td>
+              {recentTx.length === 0 ? (
+                <tr>
                   <td
-                    className={
-                      tx.txn_type === "credit"
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }
+                    colSpan="4"
+                    className="p-6 text-center text-gray-500"
                   >
-                    {tx.txn_type === "credit" ? "+" : "-"}
-                    {formatINR(convert(tx.amount))}
+                    No recent transactions
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentTx.map((tx) => (
+                  <tr
+                    key={tx.id}
+                    className="border-b hover:bg-gray-50"
+                  >
+                    <td className="p-4">
+                      {tx.txn_date?.slice(0, 10)}
+                    </td>
+                    <td>{tx.description || "-"}</td>
+                    <td>{tx.category || "Others"}</td>
+                    <td
+                      className={`text-right pr-4 font-medium ${
+                        tx.txn_type === "credit"
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {tx.txn_type === "credit" ? "+" : "-"}₹{" "}
+                      {formatINR(tx.amount)}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -224,18 +213,13 @@ export default function Dashboard() {
   );
 }
 
-/* ---------------- UI COMPONENT ---------------- */
-
-function StatCard({ title, value, positive, negative }) {
+/* CARD COMPONENT */
+function StatCard({ title, value, color = "text-black" }) {
   return (
-    <div className="bg-white rounded-xl shadow p-6">
-      <h3 className="text-gray-500">{title}</h3>
-      <p
-        className={`text-2xl font-bold mt-2 ${
-          positive ? "text-green-600" : negative ? "text-red-600" : ""
-        }`}
-      >
-        {value ?? "-"}
+    <div className="bg-white p-6 rounded-xl shadow">
+      <p className="text-gray-500 text-sm">{title}</p>
+      <p className={`text-2xl font-bold ${color}`}>
+        {value}
       </p>
     </div>
   );

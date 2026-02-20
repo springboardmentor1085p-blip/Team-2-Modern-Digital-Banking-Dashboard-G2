@@ -14,3 +14,8 @@ export const updateBillApi = async (id, data) => {
   const res = await api.put(`/bills/${id}`, data);
   return res.data;
 };
+
+export const deleteBillApi = async (id) => {
+  const res = await api.delete(`/bills/${id}`);
+  return res.data;
+};

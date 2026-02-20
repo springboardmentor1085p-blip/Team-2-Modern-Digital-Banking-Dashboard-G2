@@ -1,62 +1,76 @@
 import React from "react";
 
-export default function BudgetCard({
+const BudgetCard = ({
   id,
   category,
   spent_amount,
   limit_amount,
   warning,
   onDelete,
-  onEdit
-}) {
-  const percent = Math.min((spent_amount / limit_amount) * 100, 100);
-  const isExceeded = spent_amount > limit_amount;
+  onEdit,
+}) => {
+  // 🔥 FIX: extract numbers safely
+  const spent = Number(
+    spent_amount.replace(/[₹,]/g, "")
+  );
+  const limit = Number(
+    limit_amount.replace(/[₹,]/g, "")
+  );
+
+  // 🔥 FIX: real percentage calculation
+  const percentage = Math.min((spent / limit) * 100, 100);
+
+  // 🔥 FIX: correct status
+  const isExceeded = spent > limit;
 
   return (
-    <div className="bg-white p-5 rounded-xl shadow space-y-3">
-
-      {/* HEADER (only once) */}
+    <div className="bg-white p-5 rounded-xl shadow border space-y-3">
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-lg">{category}</h3>
-
-        <div className="flex gap-3">
-          {/* EDIT */}
+        <div className="space-x-2">
           <button
-            onClick={() => onEdit({ id, category, spent_amount, limit_amount, warning })}
-            className="text-blue-500 hover:text-blue-700 text-sm font-semibold"
+            onClick={() => onEdit()}
+            className="text-blue-600 hover:underline"
           >
             Edit
           </button>
-
-          {/* DELETE */}
           <button
             onClick={() => onDelete(id)}
-            className="text-red-500 hover:text-red-700 text-sm font-semibold"
+            className="text-red-600 hover:underline"
           >
             Delete
           </button>
         </div>
       </div>
 
-      {/* DETAILS */}
-      <p className="text-sm text-gray-600">
-        Spent: ₹{spent_amount} / ₹{limit_amount}
+      {/* VALUES */}
+      <p className="text-gray-600 text-sm">
+        Spent: {spent_amount} / {limit_amount}
       </p>
 
-      {/* PROGRESS BAR */}
-      <div className="w-full bg-gray-200 rounded-full h-3">
+      {/* 🔥 FIXED PROGRESS BAR */}
+      <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
         <div
-          className={`h-3 rounded-full ${isExceeded ? "bg-red-500" : "bg-green-500"}`}
-          style={{ width: `${percent}%` }}
+          className={`h-full rounded-full transition-all ${
+            isExceeded ? "bg-red-500" : "bg-green-500"
+          }`}
+          style={{ width: `${percentage}%` }}
         ></div>
       </div>
 
-      {/* STATUS / WARNING */}
+      {/* 🔥 FIXED WARNING TEXT */}
       {isExceeded ? (
-        <p className="text-sm font-semibold text-red-600">⚠ Budget limit exceeded</p>
+        <p className="text-red-600 text-sm flex items-center gap-1">
+          ⚠️ Budget limit exceeded
+        </p>
       ) : (
-        <p className="text-sm font-semibold text-green-600">Within limit</p>
+        <p className="text-green-600 text-sm">
+          ✅ Within limit
+        </p>
       )}
     </div>
   );
-}
+};
+
+export default BudgetCard;
